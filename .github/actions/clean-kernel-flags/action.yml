@@ -1,0 +1,35 @@
+name: Clean Kernel Flags
+description: Remove dirty flags, localversion strings, and ABI symbol issues
+
+runs:
+  using: composite
+  steps:
+    - name: Clean kernel build flags
+      shell: bash
+      run: |
+        set -ex
+
+        COMMON_DIR="$GITHUB_WORKSPACE/kernel/common"
+
+        # Remove localversion files that add -dirty or custom suffixes
+        find "$COMMON_DIR" -maxdepth 1 -name 'localversion*' -delete 2>/dev/null || true
+
+        # Prevent scripts/setlocalversion from appending -dirty
+        if [[ -f "$COMMON_DIR/scripts/setlocalversion" ]]; then
+          # Replace the dirty check to always output nothing
+          sed -i 's/res="$res-dirty"/res=""/' "$COMMON_DIR/scripts/setlocalversion" 2>/dev/null || true
+        fi
+
+        # Clean up any .scmversion file
+        echo "" > "$COMMON_DIR/.scmversion" 2>/dev/null || true
+
+        # Commit cleanup
+        cd "$COMMON_DIR"
+        git config user.name "build"
+        git config user.email "build@localhost"
+        git add -A
+        if [[ -n "$(git status --porcelain)" ]]; then
+          git commit -m "Clean kernel version flags"
+        fi
+
+        echo "Kernel flags cleaned"

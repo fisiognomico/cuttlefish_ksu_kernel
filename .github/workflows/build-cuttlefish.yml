@@ -1,0 +1,14 @@
+name: Build Cuttlefish KSU Kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      kernel_version: "5.15.X-android13-lts"
+      feature_set: "WKSU+SUSFS"
+      arch: "x86_64"

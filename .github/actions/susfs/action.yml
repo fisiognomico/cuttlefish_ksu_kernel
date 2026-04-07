@@ -1,0 +1,105 @@
+name: Setup SUSFS
+description: Clone susfs4ksu from GitLab, copy source into kernel tree, apply base patch, add config flags
+
+inputs:
+  android_version:
+    description: 'Android version (e.g. android13)'
+    required: true
+  kernel_version:
+    description: 'Kernel version (e.g. 5.15)'
+    required: true
+  os_patch_level:
+    description: 'OS patch level'
+    required: true
+  sublevel:
+    description: 'Kernel sublevel'
+    required: true
+  susfs_commit:
+    description: 'Commit map (branch:commit,branch:commit...)'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Clone susfs4ksu
+      shell: bash
+      run: |
+        set -ex
+
+        SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+        SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
+
+        echo "Preparing SUSFS for branch: $SUSFS_BRANCH"
+
+        # Parse commit map to find the commit for this branch
+        COMMIT_MAP="${{ inputs.susfs_commit }}"
+        TARGET_COMMIT=""
+
+        if [ -n "$COMMIT_MAP" ]; then
+          IFS=',' read -ra ENTRIES <<< "$COMMIT_MAP"
+          for entry in "${ENTRIES[@]}"; do
+            IFS=':' read -r branch commit <<< "$entry"
+            if [ "$branch" == "$SUSFS_BRANCH" ]; then
+              TARGET_COMMIT="$commit"
+              break
+            fi
+          done
+        fi
+
+        if [ -n "$TARGET_COMMIT" ]; then
+          echo "Found specific commit for $SUSFS_BRANCH: $TARGET_COMMIT"
+          git clone "$SUSFS_REPO" -b "$SUSFS_BRANCH" "$GITHUB_WORKSPACE/susfs4ksu"
+          cd "$GITHUB_WORKSPACE/susfs4ksu"
+          git checkout "$TARGET_COMMIT"
+        else
+          echo "No specific commit found for $SUSFS_BRANCH, cloning latest..."
+          git clone "$SUSFS_REPO" -b "$SUSFS_BRANCH" --depth=1 "$GITHUB_WORKSPACE/susfs4ksu"
+        fi
+
+        SUSFS_VERSION="2.0.0"
+        echo "SUSFS_VERSION=$SUSFS_VERSION" >> $GITHUB_ENV
+
+    - name: Add SUSFS config flags
+      shell: bash
+      run: |
+        cat >> "$GITHUB_WORKSPACE/wild_gki.fragment" << 'EOF'
+        # KernelSU SUSFS Configuration
+        CONFIG_KSU_SUSFS=y
+        CONFIG_KSU_SUSFS_SUS_PATH=y
+        CONFIG_KSU_SUSFS_SUS_MOUNT=y
+        CONFIG_KSU_SUSFS_SUS_KSTAT=y
+        CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+        CONFIG_KSU_SUSFS_ENABLE_LOG=y
+        CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+        CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+        CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+        CONFIG_KSU_SUSFS_SUS_MAP=y
+        EOF
+        # Remove leading whitespace from heredoc
+        sed -i 's/^        //' "$GITHUB_WORKSPACE/wild_gki.fragment"
+
+    - name: Apply base SUSFS patches
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        set -ex
+
+        # Copy SUSFS source files into the kernel tree
+        cp "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/fs/"* fs/
+        cp "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/include/linux/"* include/linux/
+
+        # Apply the base integration patch for this android/kernel version
+        PATCH_NAME="50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch"
+        cp "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/$PATCH_NAME" ./
+        # Use --fuzz=3 to handle minor context drift from newer sublevels
+        patch -p1 --fuzz=3 < "$PATCH_NAME"
+
+        # If any .rej files were created, show them and fail
+        if find . -name '*.rej' -type f | grep -q .; then
+          echo "ERROR: Patch rejections found:"
+          find . -name '*.rej' -exec echo "  {}" \; -exec cat {} \;
+          exit 1
+        fi
+
+        echo "SUSFS base patches applied"

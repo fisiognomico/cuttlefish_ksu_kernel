@@ -1,0 +1,40 @@
+name: Configure Kernel Options
+description: Generate base defconfig fragment with KSU and networking config options
+
+inputs:
+  kernel_version:
+    description: 'Kernel version (e.g. 5.15)'
+    required: true
+  arch:
+    description: 'Target architecture (x86_64 or aarch64)'
+    required: false
+    default: 'x86_64'
+
+runs:
+  using: composite
+  steps:
+    - name: Generate kernel config fragment
+      shell: bash
+      run: |
+        set -ex
+
+        FRAGMENT="$GITHUB_WORKSPACE/wild_gki.fragment"
+
+        cat > "$FRAGMENT" << 'FRAG_EOF'
+        # KernelSU
+        CONFIG_KSU=y
+
+        # Networking (useful for cuttlefish virtio-net)
+        CONFIG_IP_NF_TARGET_TTL=y
+        CONFIG_IP6_NF_TARGET_HL=y
+        CONFIG_IP6_NF_MATCH_HL=y
+
+        # Misc
+        CONFIG_TMPFS_XATTR=y
+        FRAG_EOF
+
+        # Remove leading whitespace from heredoc
+        sed -i 's/^        //' "$FRAGMENT"
+
+        echo "Generated config fragment at $FRAGMENT:"
+        cat "$FRAGMENT"

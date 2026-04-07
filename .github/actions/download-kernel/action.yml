@@ -1,0 +1,48 @@
+name: Download Kernel
+description: Clone GKI kernel source via repo init + sync, optionally checkout a specific commit
+
+inputs:
+  android_version:
+    description: 'Android version (e.g. android13)'
+    required: true
+  kernel_version:
+    description: 'Kernel version (e.g. 5.15)'
+    required: true
+  os_patch_level:
+    description: 'OS patch level (e.g. lts or 2024-01)'
+    required: true
+  arch:
+    description: 'Target architecture (x86_64 or aarch64)'
+    required: false
+    default: 'x86_64'
+
+runs:
+  using: composite
+  steps:
+    - name: Clone kernel via repo
+      shell: bash
+      run: |
+        set -ex
+
+        # Google kernel manifest branch format:
+        #   LTS:   common-androidXX-KERNEL_VERSION       (e.g. common-android13-5.15)
+        #   Dated: common-androidXX-KERNEL_VERSION-DATE   (e.g. common-android13-5.15-2023-06)
+        BRANCH="common-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+        if [[ "${{ inputs.os_patch_level }}" != "lts" ]]; then
+          BRANCH="${BRANCH}-${{ inputs.os_patch_level }}"
+        fi
+
+        KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
+
+        if [[ -d "$KERNEL_DIR/common" ]]; then
+          echo "Kernel source already exists, skipping clone."
+          exit 0
+        fi
+
+        cd "$KERNEL_DIR"
+
+        repo init --depth=1 -u https://android.googlesource.com/kernel/manifest \
+          -b "$BRANCH" --repo-rev=v2.16
+        repo sync -c -j"$(nproc --all)" --no-tags
+
+        echo "Kernel source cloned to $KERNEL_DIR"

@@ -1,0 +1,73 @@
+name: Setup Wild KSU (KernelSU-Next)
+description: Clone KernelSU-Next, symlink into drivers, add CONFIG_KSU=y, commit changes
+
+inputs:
+  ksu_commit:
+    description: 'KernelSU-Next commit or tag to checkout (default: latest tag)'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Setup KernelSU-Next
+      shell: bash
+      run: |
+        set -ex
+
+        KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
+        COMMON_DIR="$KERNEL_DIR/common"
+        DRIVER_DIR="$COMMON_DIR/drivers"
+        KSU_REPO="https://github.com/KernelSU-Next/KernelSU-Next"
+
+        # Clone KernelSU-Next
+        if [[ ! -d "$GITHUB_WORKSPACE/KernelSU-Next" ]]; then
+          git clone "$KSU_REPO" "$GITHUB_WORKSPACE/KernelSU-Next"
+        fi
+
+        cd "$GITHUB_WORKSPACE/KernelSU-Next"
+
+        # Checkout specific commit/tag or latest tag
+        if [[ -n "${{ inputs.ksu_commit }}" ]]; then
+          git checkout "${{ inputs.ksu_commit }}"
+        else
+          LATEST_TAG="$(git describe --abbrev=0 --tags)"
+          git checkout "$LATEST_TAG"
+        fi
+
+        # Export KSU version info
+        KSU_GIT_TAG="$(git describe --abbrev=0 --tags 2>/dev/null || echo 'unknown')"
+        KSU_VERSION="$(git rev-list --count HEAD 2>/dev/null || echo '0')"
+        echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> "$GITHUB_ENV"
+        echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"
+        echo "KernelSU-Next tag: $KSU_GIT_TAG, version: $KSU_VERSION"
+
+        # Create symlink in drivers
+        cd "$DRIVER_DIR"
+        ln -sf "$(realpath --relative-to="$DRIVER_DIR" "$GITHUB_WORKSPACE/KernelSU-Next/kernel")" "kernelsu"
+
+        # Add to drivers/Makefile if not present
+        if ! grep -q "kernelsu" "$DRIVER_DIR/Makefile"; then
+          printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> "$DRIVER_DIR/Makefile"
+        fi
+
+        # Add to drivers/Kconfig if not present
+        if ! grep -q 'source "drivers/kernelsu/Kconfig"' "$DRIVER_DIR/Kconfig"; then
+          sed -i '/endmenu/i\source "drivers/kernelsu/Kconfig"' "$DRIVER_DIR/Kconfig"
+        fi
+
+        # Add KernelSU-Next to .bazelignore to prevent traversal issues
+        if ! grep -q "^KernelSU-Next$" "$KERNEL_DIR/.bazelignore" 2>/dev/null; then
+          echo "KernelSU-Next" >> "$KERNEL_DIR/.bazelignore"
+        fi
+
+        # Commit changes in common/
+        cd "$COMMON_DIR"
+        git config user.name "build"
+        git config user.email "build@localhost"
+        git add -A
+        if [[ -n "$(git status --porcelain)" ]]; then
+          git commit -m "Add KernelSU-Next support (tag: $KSU_GIT_TAG)"
+        fi
+
+        echo "KernelSU-Next setup complete"
