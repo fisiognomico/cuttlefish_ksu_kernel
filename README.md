@@ -111,5 +111,3 @@ cvd create \
 | `.github/actions/susfs-patches/` | Applies SUSFS kernel patches |
 | `.github/actions/configure-kernel/` | Sets kernel config options (defconfig fragment) |
 | `.github/actions/clean-kernel-flags/` | Strips debug/tracing flags for a clean build |
-| `setup.sh` | Standalone script for manual kernel patching (bazel-based, experimental) |
-| `build.yml` | Reference copy of the WildKernels workflow |
