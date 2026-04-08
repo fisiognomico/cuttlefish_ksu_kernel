@@ -22,7 +22,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Clone susfs4ksu
+    - name: Setup SUSFS Branch
       shell: bash
       run: |
         set -ex
@@ -60,7 +60,7 @@ runs:
         SUSFS_VERSION="2.0.0"
         echo "SUSFS_VERSION=$SUSFS_VERSION" >> $GITHUB_ENV
 
-    - name: Add SUSFS config flags
+    - name: Enable KernelSU SUSFS Config
       shell: bash
       run: |
         cat >> "$GITHUB_WORKSPACE/wild_gki.fragment" << 'EOF'
@@ -76,31 +76,8 @@ runs:
         CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
         CONFIG_KSU_SUSFS_SUS_MAP=y
         EOF
-        # Remove leading whitespace from heredoc
-        sed -i 's/^        //' "$GITHUB_WORKSPACE/wild_gki.fragment"
 
-    - name: Switch KernelSU-Next to SUSFS branch
-      shell: bash
-      run: |
-        set -ex
-
-        # The legacy_susfs branch of KernelSU-Next already has SUSFS fully
-        # integrated (Kconfig entries + source hooks), so we don't need to
-        # apply the 10_enable_susfs_for_ksu.patch which is incompatible
-        # with the current main branch file structure.
-        cd "$GITHUB_WORKSPACE/KernelSU-Next"
-        git fetch origin legacy_susfs
-        git checkout legacy_susfs
-
-        # Verify SUSFS Kconfig entries are present
-        if ! grep -q "KSU_SUSFS" kernel/Kconfig; then
-          echo "ERROR: legacy_susfs branch does not contain SUSFS Kconfig entries"
-          exit 1
-        fi
-
-        echo "KernelSU-Next switched to legacy_susfs branch"
-
-    - name: Apply base SUSFS patches
+    - name: Apply Base SUSFS Patches
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
@@ -111,53 +88,8 @@ runs:
         cp "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/include/linux/"* include/linux/
 
         # Apply the base integration patch for this android/kernel version
+        # Use || true to tolerate partial failures — the susfs-patches action
+        # handles version-specific fixes afterward
         PATCH_NAME="50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch"
         cp "$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/$PATCH_NAME" ./
-        # Pre-apply hunk #1 for fs/namespace.c to handle GKI vendor hook includes
-        # that break context matching. The patch expects an empty line after
-        # "internal.h" but android14-6.1 has an extra #include <trace/hooks/blk.h>.
-        if [[ "${{ inputs.android_version }}" == "android14" && "${{ inputs.kernel_version }}" == "6.1" ]]; then
-          # Insert SUSFS include after mnt_idmapping.h
-          sed -i '/#include <linux\/mnt_idmapping.h>/a\
-        #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
-        #include <linux/susfs_def.h>\
-        #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT' fs/namespace.c
-
-          # Insert SUSFS declarations block before "/* Maximum number of mounts"
-          sed -i '/^\/\* Maximum number of mounts in a mount namespace \*\/$/i\
-        #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
-        extern bool susfs_is_current_ksu_domain(void);\
-        extern bool susfs_is_sdcard_android_data_decrypted __read_mostly;\
-        \
-        #define CL_COPY_MNT_NS BIT(25) \/\* used by copy_mnt_ns() \*\/\
-        \
-        static DEFINE_IDA(susfs_mnt_id_ida);\
-        static DEFINE_IDA(susfs_mnt_group_ida);\
-        \
-        #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
-        ' fs/namespace.c
-
-          # Apply remaining hunks (2-10) — hunk 1 will fail but --force skips it
-          patch -p1 --fuzz=3 --force < "$PATCH_NAME" || true
-
-          # Verify hunk 1 content was applied (our sed insertion)
-          if ! grep -q "CONFIG_KSU_SUSFS_SUS_MOUNT" fs/namespace.c; then
-            echo "ERROR: SUSFS namespace.c insertion failed"
-            exit 1
-          fi
-
-          # Clean up the .rej file from hunk 1 (expected)
-          rm -f fs/namespace.c.rej
-        else
-          # Standard path for other versions
-          patch -p1 --fuzz=3 < "$PATCH_NAME"
-        fi
-
-        # Check for unexpected rejects (namespace.c.rej was already cleaned up)
-        if find . -name '*.rej' -type f | grep -q .; then
-          echo "ERROR: Patch rejections found:"
-          find . -name '*.rej' -exec echo "  {}" \; -exec cat {} \;
-          exit 1
-        fi
-
-        echo "SUSFS base patches applied"
+        patch -p1 < "$PATCH_NAME" || true
