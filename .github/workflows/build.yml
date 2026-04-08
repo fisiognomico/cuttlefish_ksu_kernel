@@ -272,16 +272,25 @@ jobs:
               //common-modules/virtual-device:virtual_device_x86_64_dist || exit 1
           fi
         else
-          # aarch64 build (original WildKernels path)
+          # Cuttlefish aarch64 build
           if [ -f "build/build.sh" ]; then
-            SKIP_MRPROPER=1 GKI_DEFCONFIG_FRAGMENT="$GITHUB_WORKSPACE/wild_gki.fragment" LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh || exit 1
+            # Patch virtual device aarch64 config to produce Image + initramfs
+            sed -i \
+              -e 's|^FILES=""|FILES="arch/arm64/boot/Image vmlinux System.map vmlinux.symvers modules.builtin modules.builtin.modinfo"|' \
+              -e 's|^MAKE_GOALS="modules"|MAKE_GOALS="Image modules"|' \
+              common-modules/virtual-device/build.config.virtual_device.aarch64
+
+            SKIP_MRPROPER=1 \
+              GKI_DEFCONFIG_FRAGMENT="$GITHUB_WORKSPACE/wild_gki.fragment" \
+              LTO=thin \
+              BUILD_CONFIG=common-modules/virtual-device/build.config.virtual_device.aarch64 \
+              build/build.sh || exit 1
           else
+            # android14+ uses bazel
             cp "$GITHUB_WORKSPACE/wild_gki.fragment" common/arch/arm64/configs/wild_gki.fragment
-            if [[ "$ANDROID_VERSION" == "android14" ]]; then
-              tools/bazel build --config=fast --lto=thin --defconfig_fragment=//common:arch/arm64/configs/wild_gki.fragment //common:kernel_aarch64_dist || exit 1
-            else
-              tools/bazel build --config=fast --lto=none --defconfig_fragment=//common:arch/arm64/configs/wild_gki.fragment //common:kernel_aarch64_dist || exit 1
-            fi
+            tools/bazel run --config=fast --lto=none \
+              --defconfig_fragment=//common:arch/arm64/configs/wild_gki.fragment \
+              //common-modules/virtual-device:virtual_device_aarch64_dist || exit 1
           fi
         fi
 
@@ -322,13 +331,30 @@ jobs:
             exit 1
           fi
         else
-          # aarch64: look for Image
-          if [ -f "$GITHUB_WORKSPACE/kernel/out/$ANDROID_VERSION-$KERNEL_VERSION/dist/Image" ]; then
-            cp "$GITHUB_WORKSPACE/kernel/out/$ANDROID_VERSION-$KERNEL_VERSION/dist/Image" "$ARTIFACTS_DIR/Image"
-          elif [ -f "$GITHUB_WORKSPACE/kernel/bazel-bin/common/kernel_aarch64/Image" ]; then
-            cp "$GITHUB_WORKSPACE/kernel/bazel-bin/common/kernel_aarch64/Image" "$ARTIFACTS_DIR/Image"
-          else
-            echo "ERROR: Image file not found"
+          # Cuttlefish aarch64: look for Image + initramfs.img
+          DIST_DIR="$GITHUB_WORKSPACE/kernel/out/$ANDROID_VERSION-$KERNEL_VERSION/dist"
+          BAZEL_DIST="$GITHUB_WORKSPACE/kernel/bazel-bin/common-modules/virtual-device/virtual_device_aarch64"
+
+          for SEARCH_DIR in "$DIST_DIR" "$BAZEL_DIST"; do
+            if [[ -f "$SEARCH_DIR/Image" ]]; then
+              cp "$SEARCH_DIR/Image" "$ARTIFACTS_DIR/Image"
+              echo "Found Image in $SEARCH_DIR"
+              break
+            fi
+          done
+
+          for SEARCH_DIR in "$DIST_DIR" "$BAZEL_DIST"; do
+            if [[ -f "$SEARCH_DIR/initramfs.img" ]]; then
+              cp "$SEARCH_DIR/initramfs.img" "$ARTIFACTS_DIR/initramfs.img"
+              echo "Found initramfs.img in $SEARCH_DIR"
+              break
+            fi
+          done
+
+          if [[ ! -f "$ARTIFACTS_DIR/Image" ]]; then
+            echo "ERROR: Image not found. Searching..."
+            find "$GITHUB_WORKSPACE/kernel/out" -name "Image" -type f 2>/dev/null || true
+            find "$GITHUB_WORKSPACE/kernel/bazel-bin" -name "Image" -type f 2>/dev/null || true
             exit 1
           fi
         fi
@@ -398,11 +424,15 @@ jobs:
         echo "KSU Commit          : ${{ inputs.ksu_commit || 'latest tag' }}"
         echo "KSU Tag             : ${KSU_GIT_TAG:-N/A}"
         echo "KSU Version         : ${KSU_VERSION:-N/A}"
+        echo ""
+        echo "=== Cuttlefish Launch ==="
         if [[ "$ARCH" == "x86_64" ]]; then
-          echo ""
-          echo "=== Cuttlefish Launch ==="
           echo "  cvd create \\"
           echo "    -kernel_path=bzImage \\"
+          echo "    -initramfs_path=initramfs.img"
+        else
+          echo "  cvd create \\"
+          echo "    -kernel_path=Image \\"
           echo "    -initramfs_path=initramfs.img"
         fi
 # End of workflow

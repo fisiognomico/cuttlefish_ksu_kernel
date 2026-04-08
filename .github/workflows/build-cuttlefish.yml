@@ -2,13 +2,32 @@ name: Build Cuttlefish KSU Kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architecture to build'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - x86_64
+          - aarch64
+          - both
   push:
     branches: [main, master]
 
 jobs:
-  build:
+  build-x86_64:
+    if: ${{ github.event.inputs.arch != 'aarch64' }}
     uses: ./.github/workflows/build.yml
     with:
       kernel_version: "5.15.X-android13-lts"
       feature_set: "WKSU+SUSFS"
       arch: "x86_64"
+
+  build-aarch64:
+    if: ${{ github.event.inputs.arch != 'x86_64' }}
+    uses: ./.github/workflows/build.yml
+    with:
+      kernel_version: "6.1.X-android14-lts"
+      feature_set: "WKSU+SUSFS"
+      arch: "aarch64"
