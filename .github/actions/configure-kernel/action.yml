@@ -21,9 +21,6 @@ runs:
         FRAGMENT="$GITHUB_WORKSPACE/wild_gki.fragment"
 
         cat > "$FRAGMENT" << 'FRAG_EOF'
-        # KernelSU
-        CONFIG_KSU=y
-
         # Networking (useful for cuttlefish virtio-net)
         CONFIG_IP_NF_TARGET_TTL=y
         CONFIG_IP6_NF_TARGET_HL=y

@@ -2,9 +2,9 @@ name: Setup Wild KSU
 description: Download and configure Wild KSU with version tracking
 inputs:
   ksu_commit:
-    description: 'KSU commit or tag to checkout (default: latest tag)'
+    description: 'KSU commit, tag, or branch to checkout (default: stable)'
     required: false
-    default: ''
+    default: 'stable'
 
 runs:
   using: composite
