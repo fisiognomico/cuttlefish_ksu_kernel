@@ -79,6 +79,31 @@ runs:
         # Remove leading whitespace from heredoc
         sed -i 's/^        //' "$GITHUB_WORKSPACE/wild_gki.fragment"
 
+    - name: Apply SUSFS KernelSU driver patch
+      shell: bash
+      run: |
+        set -ex
+
+        KSU_PATCH="$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+        if [[ ! -f "$KSU_PATCH" ]]; then
+          echo "ERROR: KernelSU SUSFS patch not found at $KSU_PATCH"
+          exit 1
+        fi
+
+        # The patch has paths like kernel/Kconfig, kernel/Kbuild, etc.
+        # KernelSU-Next was cloned to $GITHUB_WORKSPACE/KernelSU-Next
+        # and kernel/ was symlinked to drivers/kernelsu
+        cd "$GITHUB_WORKSPACE/KernelSU-Next"
+        patch -p1 --fuzz=3 < "$KSU_PATCH"
+
+        if find . -name '*.rej' -type f | grep -q .; then
+          echo "ERROR: KernelSU SUSFS patch rejections:"
+          find . -name '*.rej' -exec echo "  {}" \; -exec cat {} \;
+          exit 1
+        fi
+
+        echo "SUSFS KernelSU driver patch applied"
+
     - name: Apply base SUSFS patches
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
