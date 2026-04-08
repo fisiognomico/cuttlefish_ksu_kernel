@@ -79,30 +79,26 @@ runs:
         # Remove leading whitespace from heredoc
         sed -i 's/^        //' "$GITHUB_WORKSPACE/wild_gki.fragment"
 
-    - name: Apply SUSFS KernelSU driver patch
+    - name: Switch KernelSU-Next to SUSFS branch
       shell: bash
       run: |
         set -ex
 
-        KSU_PATCH="$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
-        if [[ ! -f "$KSU_PATCH" ]]; then
-          echo "ERROR: KernelSU SUSFS patch not found at $KSU_PATCH"
-          exit 1
-        fi
-
-        # The patch has paths like kernel/Kconfig, kernel/Kbuild, etc.
-        # KernelSU-Next was cloned to $GITHUB_WORKSPACE/KernelSU-Next
-        # and kernel/ was symlinked to drivers/kernelsu
+        # The legacy_susfs branch of KernelSU-Next already has SUSFS fully
+        # integrated (Kconfig entries + source hooks), so we don't need to
+        # apply the 10_enable_susfs_for_ksu.patch which is incompatible
+        # with the current main branch file structure.
         cd "$GITHUB_WORKSPACE/KernelSU-Next"
-        patch -p1 --fuzz=3 < "$KSU_PATCH"
+        git fetch origin legacy_susfs
+        git checkout legacy_susfs
 
-        if find . -name '*.rej' -type f | grep -q .; then
-          echo "ERROR: KernelSU SUSFS patch rejections:"
-          find . -name '*.rej' -exec echo "  {}" \; -exec cat {} \;
+        # Verify SUSFS Kconfig entries are present
+        if ! grep -q "KSU_SUSFS" kernel/Kconfig; then
+          echo "ERROR: legacy_susfs branch does not contain SUSFS Kconfig entries"
           exit 1
         fi
 
-        echo "SUSFS KernelSU driver patch applied"
+        echo "KernelSU-Next switched to legacy_susfs branch"
 
     - name: Apply base SUSFS patches
       shell: bash
