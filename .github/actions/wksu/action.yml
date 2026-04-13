@@ -3,7 +3,8 @@ description: Download and configure Wild KSU with version tracking
 inputs:
   ksu_commit:
     description: "KSU Commit"
-    required: true
+    required: false
+    default: 'stable'
     type: string
 
 runs:
@@ -13,6 +14,10 @@ runs:
       shell: bash
       working-directory: ${{ github.workspace }}/kernel
       run: |
+        # Configure git identity first (required for setup.sh commits)
+        git config --global user.name "build"
+        git config --global user.email "build@localhost"
+        
         # Clone the repository
         curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/stable/kernel/setup.sh" | bash -s ${{ inputs.ksu_commit }}
 
@@ -39,23 +44,3 @@ runs:
         echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV
         echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
         echo "KSU_COMMIT=$KSU_COMMIT" >> $GITHUB_ENV
-
-    # AVD-Specific: Add Wild_KSU to bazelignore and commit changes
-    - name: Add Wild_KSU to bazelignore
-      shell: bash
-      working-directory: ${{ github.workspace }}/kernel
-      run: |
-        # Prevent bazel from traversing the Wild_KSU directory
-        if ! grep -q "^Wild_KSU$" .bazelignore 2>/dev/null; then
-          echo "Wild_KSU" >> .bazelignore
-        fi
-
-        # Commit driver symlink and Kconfig/Makefile changes in common/
-        # so the bazel build sees a consistent source tree
-        cd common
-        git config user.name "build"
-        git config user.email "build@localhost"
-        git add -A
-        if [[ -n "$(git status --porcelain)" ]]; then
-          git commit -m "Add Wild KSU support (tag: $KSU_GIT_TAG)"
-        fi

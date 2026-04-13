@@ -1,35 +1,29 @@
-name: Clean Kernel Flags
-description: Remove dirty flags, localversion strings, and ABI symbol issues
+name: 'Clean Kernel Flags'
+description: 'Clean dirty flags and ABI exports to prevent build errors'
 
 runs:
-  using: composite
+  using: "composite"
   steps:
-    - name: Clean kernel build flags
+    - name: Clean Dirty Flags and ABI Exports
       shell: bash
+      working-directory: ${{ github.workspace }}/kernel
       run: |
-        set -ex
-
-        COMMON_DIR="$GITHUB_WORKSPACE/kernel/common"
-
-        # Remove localversion files that add -dirty or custom suffixes
-        find "$COMMON_DIR" -maxdepth 1 -name 'localversion*' -delete 2>/dev/null || true
-
-        # Prevent scripts/setlocalversion from appending -dirty
-        if [[ -f "$COMMON_DIR/scripts/setlocalversion" ]]; then
-          # Replace the dirty check to always output nothing
-          sed -i 's/res="$res-dirty"/res=""/' "$COMMON_DIR/scripts/setlocalversion" 2>/dev/null || true
+        # Clean dirty flags and ABI exports based on build system
+        if [ -f "build/build.sh" ]; then
+          # Old build system (5.10, 5.15, early 6.1)
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+        else
+          # Bazel build system (newer kernels)
+          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          # Remove ABI protected exports to prevent build errors
+          rm -rf ./common/android/abi_gki_protected_exports_*
+          perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' ./common/BUILD.bazel
         fi
 
-        # Clean up any .scmversion file
-        echo "" > "$COMMON_DIR/.scmversion" 2>/dev/null || true
-
-        # Commit cleanup
-        cd "$COMMON_DIR"
-        git config user.name "build"
-        git config user.email "build@localhost"
-        git add -A
-        if [[ -n "$(git status --porcelain)" ]]; then
-          git commit -m "Clean kernel version flags"
-        fi
-
-        echo "Kernel flags cleaned"
+        # Commit changes to avoid dirty state during build
+        cd ${{ github.workspace }}/kernel/common
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add .
+        git commit -m "Wild: Clean Dirty Flag"
