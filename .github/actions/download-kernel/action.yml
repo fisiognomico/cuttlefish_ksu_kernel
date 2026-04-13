@@ -24,6 +24,10 @@ runs:
       run: |
         set -ex
 
+        # Configure git identity for repo (required for act, noop on GitHub Actions)
+        git config --global user.name "build"
+        git config --global user.email "build@localhost"
+
         # Google kernel manifest branch format:
         #   LTS:   common-androidXX-KERNEL_VERSION       (e.g. common-android13-5.15)
         #   Dated: common-androidXX-KERNEL_VERSION-DATE   (e.g. common-android13-5.15-2023-06)
