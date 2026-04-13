@@ -1,0 +1,12 @@
+# Act configuration for local testing
+# Place this file in the project root or ~/.config/act/actrc
+
+# Container image to use
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Git identity for repo sync (required when running with act)
+# GitHub Actions runners have this pre-configured, but act containers don't
+--env GIT_AUTHOR_NAME=build
+--env GIT_AUTHOR_EMAIL=build@localhost
+--env GIT_COMMITTER_NAME=build
+--env GIT_COMMITTER_EMAIL=build@localhost
