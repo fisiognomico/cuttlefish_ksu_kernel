@@ -18,24 +18,61 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Apply Android 12 5.10 Fixes
+      if: inputs.android_version == 'android12' && inputs.kernel_version == '5.10'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        SUBLEVEL=${{ env.SUBLEVEL }}
+        SUSFS_VERSION=${{ env.SUSFS_VERSION }}
+
+        if [[ "$SUBLEVEL" -le 209 ]]; then
+          sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+        fi
+
+        if [[ "$SUBLEVEL" -le 117 ]]; then
+          cp ${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches/v${SUSFS_VERSION}/a12-5.10/fdinfo.c.patch ./
+          patch -p1 < fdinfo.c.patch
+        fi
+
+        if [[ "$SUBLEVEL" -le 43 ]]; then
+          cp ${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches/v${SUSFS_VERSION}/a12-5.10/base.c.patch ./
+          patch -p1 < base.c.patch
+        fi
+
+    - name: Apply Android 13 5.10 Fixes
+      if: inputs.android_version == 'android13' && inputs.kernel_version == '5.10'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        SUBLEVEL=${{ env.SUBLEVEL }}
+        SUSFS_VERSION=${{ env.SUSFS_VERSION }}
+
+        if [[ "$SUBLEVEL" -le 107 ]]; then
+          cp ${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches/v${SUSFS_VERSION}/a13-5.10/fdinfo.c.patch ./
+          patch -p1 < fdinfo.c.patch
+        fi
+
+        if [[ "$SUBLEVEL" -le 209 && "${{ inputs.os_patch_level }}" != "2024-05" ]]; then
+          sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+        fi
+
     - name: Apply Android 13 5.15 Fixes
       if: inputs.android_version == 'android13' && inputs.kernel_version == '5.15'
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
-        set -ex
         SUBLEVEL=${{ env.SUBLEVEL }}
         SUSFS_VERSION=${{ env.SUSFS_VERSION }}
-        PATCHES_DIR="${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches"
-
+        
         if [[ "$SUBLEVEL" -le 41 ]]; then
-          cp "$PATCHES_DIR/v${SUSFS_VERSION}/a13-5.15/namespace.c.patch" ./
+          cp ${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches/v${SUSFS_VERSION}/a13-5.15/namespace.c.patch ./
           patch -p1 < namespace.c.patch
 
-          cp "$PATCHES_DIR/v${SUSFS_VERSION}/a13-5.15/fdinfo.c.patch" ./
+          cp ${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches/v${SUSFS_VERSION}/a13-5.15/fdinfo.c.patch ./
           patch -p1 < fdinfo.c.patch
 
-          cp "$PATCHES_DIR/v${SUSFS_VERSION}/a13-5.15/open.c.patch" ./
+          cp ${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches/v${SUSFS_VERSION}/a13-5.15/open.c.patch ./
           patch -p1 < open.c.patch
 
           sed -i 's|i_uid_into_mnt(i_user_ns(&fi->inode), &fi->inode).val|fi->inode.i_uid.val|g' fs/susfs.c
@@ -44,49 +81,6 @@ runs:
 
         if [[ "$SUBLEVEL" -le 148 && "${{ inputs.os_patch_level }}" != "2024-05" ]]; then
           sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-        fi
-
-    - name: Apply Android 13 5.10 Fixes
-      if: inputs.android_version == 'android13' && inputs.kernel_version == '5.10'
-      shell: bash
-      working-directory: ${{ github.workspace }}/kernel/common
-      run: |
-        set -ex
-        SUBLEVEL=${{ env.SUBLEVEL }}
-        SUSFS_VERSION=${{ env.SUSFS_VERSION }}
-        PATCHES_DIR="${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches"
-
-        if [[ "$SUBLEVEL" -le 107 ]]; then
-          cp "$PATCHES_DIR/v${SUSFS_VERSION}/a13-5.10/fdinfo.c.patch" ./
-          patch -p1 < fdinfo.c.patch
-        fi
-
-        if [[ "$SUBLEVEL" -le 209 && "${{ inputs.os_patch_level }}" != "2024-05" ]]; then
-          sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-        fi
-
-    - name: Apply Android 12 5.10 Fixes
-      if: inputs.android_version == 'android12' && inputs.kernel_version == '5.10'
-      shell: bash
-      working-directory: ${{ github.workspace }}/kernel/common
-      run: |
-        set -ex
-        SUBLEVEL=${{ env.SUBLEVEL }}
-        SUSFS_VERSION=${{ env.SUSFS_VERSION }}
-        PATCHES_DIR="${{ github.workspace }}/kernel_patches/wild/susfs_fix_patches"
-
-        if [[ "$SUBLEVEL" -le 209 ]]; then
-          sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-        fi
-
-        if [[ "$SUBLEVEL" -le 117 ]]; then
-          cp "$PATCHES_DIR/v${SUSFS_VERSION}/a12-5.10/fdinfo.c.patch" ./
-          patch -p1 < fdinfo.c.patch
-        fi
-
-        if [[ "$SUBLEVEL" -le 43 ]]; then
-          cp "$PATCHES_DIR/v${SUSFS_VERSION}/a12-5.10/base.c.patch" ./
-          patch -p1 < base.c.patch
         fi
 
     - name: Apply Android 14 5.15 Fixes
